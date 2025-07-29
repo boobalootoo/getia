@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Media Extractor</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    input, button { margin: 5px 0; }
+    img, video, audio { max-width: 200px; display: block; margin: 10px 0; }
+    .media-block { margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Extract Media from URL</h1>
+  <input type="text" id="urlInput" placeholder="Enter URL" size="50">
+  <button onclick="fetchMedia()">Fetch Media</button>
+  <button onclick="downloadAll()">Download All as ZIP</button>
+  <div id="results"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script>
+    async function fetchMedia() {
+      const url = document.getElementById('urlInput').value;
+      const results = document.getElementById('results');
+      results.innerHTML = 'Loading...';
+
+      try {
+        const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+        const res = await fetch(proxyUrl);
+        const html = await res.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+
+        const media = [...doc.querySelectorAll('img, video, audio')];
+        results.innerHTML = '';
+        
+        if (media.length === 0) {
+          results.textContent = 'No media found.';
+          return;
+        }
+
+        media.forEach(el => {
+          const src = el.src || el.querySelector('source')?.src;
+          if (!src) return;
+
+          const block = document.createElement('div');
+          block.className = 'media-block';
+
+          const mediaClone = el.cloneNode(true);
+          mediaClone.src = src;
+          block.appendChild(mediaClone);
+
+          const link = document.createElement('a');
+          link.href = src;
+          link.textContent = 'Download';
+          link.download = src.split('/').pop();
+          link.target = '_blank';
+          block.appendChild(link);
+
+          results.appendChild(block);
+        });
+      } catch (err) {
+        results.innerHTML = 'Failed to fetch media. Possibly blocked by CORS.';
+        console.error(err);
+      }
+    }
+
+    async function downloadAll() {
+      const results = document.getElementById('results');
+      const links = [...results.querySelectorAll('a[href]')];
+
+      if (links.length === 0) {
+        alert('No media to download.');
+        return;
+      }
+
+      const zip = new JSZip();
+      const folder = zip.folder("media");
+
+      for (let link of links) {
+        const url = link.href;
+        const filename = link.download;
+
+        try {
+          const res = await fetch(url);
+          const blob = await res.blob();
+          const arrayBuffer = await blob.arrayBuffer();
+          folder.file(filename, arrayBuffer);
+        } catch (err) {
+          console.warn('Failed to fetch', url);
+        }
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(zipBlob);
+      a.download = "media.zip";
+      a.click();
+    }
+  </script>
+</body>
+</html>
