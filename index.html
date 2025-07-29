@@ -1,101 +1,168 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Media Extractor</title>
+  <meta charset="UTF-8" />
+  <title>Media Extractor from Source Code</title>
   <style>
-    body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: auto; }
-    input, button { margin: 5px 0; padding: 8px; width: 100%; max-width: 600px; }
-    .media-block { margin: 15px 0; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
-    img, video, audio { max-width: 100%; height: auto; display: block; margin-bottom: 5px; }
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 10px;
+    }
+    textarea {
+      width: 100%;
+      height: 200px;
+      font-family: monospace;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    button {
+      margin: 5px 5px 15px 0;
+      padding: 10px 15px;
+      font-size: 16px;
+    }
+    .media-block {
+      margin-bottom: 20px;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 10px;
+    }
+    img, video, audio {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin-bottom: 5px;
+    }
   </style>
 </head>
 <body>
-  <h1>🧲 Media Extractor</h1>
-  <p>Enter a URL and extract images, videos, and audio (if CORS allows). Works best with simple sites.</p>
-  <input type="text" id="urlInput" placeholder="https://example.com">
-  <button onclick="fetchMedia()">Fetch Media</button>
-  <button onclick="downloadAll()">Download All as ZIP</button>
+
+  <h1>Media Extractor from Pasted HTML Source</h1>
+  <p>Paste the full HTML source of a webpage below, then click <strong>Extract Media</strong>.</p>
+  <textarea id="sourceInput" placeholder="Paste full HTML source here..."></textarea><br />
+  <button onclick="extractMedia()">Extract Media</button>
+  <button onclick="downloadAll()" id="downloadAllBtn" disabled>Download All as ZIP</button>
+
   <div id="results"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script>
-    async function fetchMedia() {
-      const input = document.getElementById('urlInput').value;
+    let mediaUrls = [];
+
+    function extractMedia() {
+      const source = document.getElementById('sourceInput').value.trim();
       const results = document.getElementById('results');
-      results.innerHTML = 'Fetching...';
+      mediaUrls = [];
+      results.innerHTML = '';
 
-      const proxy = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(input);
+      if (!source) {
+        alert('Please paste some HTML source code first.');
+        return;
+      }
 
-      try {
-        const res = await fetch(proxy);
-        const html = await res.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const base = new URL(input);
+      // Parse the HTML string
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(source, 'text/html');
 
-        const mediaElements = [...doc.querySelectorAll('img, video, audio')];
-        results.innerHTML = '';
+      // Find media elements
+      const mediaEls = [...doc.querySelectorAll('img, video, audio, source')];
+      if (mediaEls.length === 0) {
+        results.textContent = 'No media elements found.';
+        document.getElementById('downloadAllBtn').disabled = true;
+        return;
+      }
 
-        if (mediaElements.length === 0) {
-          results.textContent = 'No media found.';
+      mediaEls.forEach(el => {
+        let src = el.getAttribute('src');
+        if (!src) return; // skip if no src attribute
+
+        // Avoid duplicates
+        if (mediaUrls.includes(src)) return;
+        mediaUrls.push(src);
+
+        const block = document.createElement('div');
+        block.className = 'media-block';
+
+        let mediaElement;
+        if (el.tagName === 'IMG') {
+          mediaElement = document.createElement('img');
+          mediaElement.src = src;
+          mediaElement.alt = 'Image';
+        } else if (el.tagName === 'VIDEO') {
+          mediaElement = document.createElement('video');
+          mediaElement.controls = true;
+          mediaElement.src = src;
+        } else if (el.tagName === 'AUDIO') {
+          mediaElement = document.createElement('audio');
+          mediaElement.controls = true;
+          mediaElement.src = src;
+        } else if (el.tagName === 'SOURCE') {
+          // Determine if source is video or audio by parent element
+          const parent = el.parentElement;
+          if (parent && parent.tagName === 'VIDEO') {
+            mediaElement = document.createElement('video');
+            mediaElement.controls = true;
+            mediaElement.src = src;
+          } else if (parent && parent.tagName === 'AUDIO') {
+            mediaElement = document.createElement('audio');
+            mediaElement.controls = true;
+            mediaElement.src = src;
+          } else {
+            // Unknown, just skip
+            return;
+          }
+        } else {
           return;
         }
 
-        mediaElements.forEach(el => {
-          const src = el.src || el.querySelector('source')?.src;
-          if (!src) return;
+        const downloadLink = document.createElement('a');
+        downloadLink.href = src;
+        downloadLink.textContent = 'Download';
+        downloadLink.target = '_blank';
+        downloadLink.download = src.split('/').pop() || 'file';
 
-          const fullSrc = new URL(src, base).href;
+        block.appendChild(mediaElement);
+        block.appendChild(downloadLink);
 
-          const wrapper = document.createElement('div');
-          wrapper.className = 'media-block';
+        results.appendChild(block);
+      });
 
-          const clone = el.cloneNode(true);
-          clone.src = fullSrc;
-
-          const downloadLink = document.createElement('a');
-          downloadLink.href = fullSrc;
-          downloadLink.download = fullSrc.split('/').pop();
-          downloadLink.textContent = 'Download';
-          downloadLink.target = '_blank';
-
-          wrapper.appendChild(clone);
-          wrapper.appendChild(downloadLink);
-          results.appendChild(wrapper);
-        });
-
-      } catch (e) {
-        results.textContent = 'Error: Could not fetch or parse the page. The site may block CORS.';
-        console.error(e);
-      }
+      document.getElementById('downloadAllBtn').disabled = mediaUrls.length === 0;
     }
 
     async function downloadAll() {
-      const results = document.getElementById('results');
-      const links = [...results.querySelectorAll('a[download]')];
-      if (links.length === 0) return alert('No downloadable media found.');
+      if (mediaUrls.length === 0) {
+        alert('No media to download.');
+        return;
+      }
 
       const zip = new JSZip();
       const folder = zip.folder("media");
 
-      for (let link of links) {
+      for (const url of mediaUrls) {
         try {
-          const res = await fetch(link.href);
+          const res = await fetch(url);
+          if (!res.ok) {
+            console.warn(`Failed to fetch ${url}: ${res.status}`);
+            continue;
+          }
           const blob = await res.blob();
-          const arrayBuffer = await blob.arrayBuffer();
-          folder.file(link.download || 'file', arrayBuffer);
+          let filename = url.split('/').pop().split('?')[0];
+          if (!filename) filename = 'file';
+
+          folder.file(filename, blob);
         } catch (e) {
-          console.warn('Failed to fetch', link.href);
+          console.warn(`Error fetching ${url}: ${e}`);
         }
       }
 
-      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const content = await zip.generateAsync({ type: "blob" });
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(zipBlob);
+      a.href = URL.createObjectURL(content);
       a.download = "media.zip";
       a.click();
     }
   </script>
+
 </body>
 </html>
