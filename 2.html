@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Media Extractor by URL</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: auto; padding: 20px; }
+    input, button { padding: 8px; margin: 10px 0; width: 100%; max-width: 600px; }
+    .media-block { margin-bottom: 20px; border-bottom: 1px solid #ccc; padding-bottom: 10px; }
+    img, video, audio { max-width: 100%; display: block; margin-bottom: 5px; }
+  </style>
+</head>
+<body>
+
+  <h1>🧲 Media Extractor from URL</h1>
+  <p>Enter a URL to extract images, videos, and audio (some sites may block this).</p>
+  <input type="text" id="urlInput" placeholder="https://example.com">
+  <button onclick="fetchAndExtract()">Fetch & Extract</button>
+  <button onclick="downloadAll()" id="downloadAllBtn" disabled>Download All as ZIP</button>
+  <div id="results"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script>
+    let mediaUrls = [];
+
+    async function fetchAndExtract() {
+      const url = document.getElementById('urlInput').value.trim();
+      const results = document.getElementById('results');
+      results.innerHTML = '';
+      mediaUrls = [];
+
+      if (!url) {
+        alert('Please enter a URL.');
+        return;
+      }
+
+      results.textContent = 'Fetching source...';
+
+      try {
+        const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+        const res = await fetch(proxyUrl);
+        const html = await res.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const base = new URL(url);
+
+        const mediaEls = [...doc.querySelectorAll('img, video, audio, source')];
+        results.innerHTML = '';
+
+        if (mediaEls.length === 0) {
+          results.textContent = 'No media found.';
+          return;
+        }
+
+        mediaEls.forEach(el => {
+          let src = el.getAttribute('src');
+          if (!src) return;
+
+          const fullSrc = new URL(src, base).href;
+          if (mediaUrls.includes(fullSrc)) return;
+          mediaUrls.push(fullSrc);
+
+          const block = document.createElement('div');
+          block.className = 'media-block';
+
+          let mediaElement;
+          if (el.tagName === 'IMG') {
+            mediaElement = document.createElement('img');
+            mediaElement.src = fullSrc;
+          } else if (el.tagName === 'VIDEO') {
+            mediaElement = document.createElement('video');
+            mediaElement.src = fullSrc;
+            mediaElement.controls = true;
+          } else if (el.tagName === 'AUDIO') {
+            mediaElement = document.createElement('audio');
+            mediaElement.src = fullSrc;
+            mediaElement.controls = true;
+          } else if (el.tagName === 'SOURCE') {
+            const parent = el.parentElement;
+            if (parent && parent.tagName === 'VIDEO') {
+              mediaElement = document.createElement('video');
+              mediaElement.src = fullSrc;
+              mediaElement.controls = true;
+            } else if (parent && parent.tagName === 'AUDIO') {
+              mediaElement = document.createElement('audio');
+              mediaElement.src = fullSrc;
+              mediaElement.controls = true;
+            } else {
+              return;
+            }
+          }
+
+          const link = document.createElement('a');
+          link.href = fullSrc;
+          link.download = fullSrc.split('/').pop().split('?')[0];
+          link.target = '_blank';
+          link.textContent = 'Download';
+
+          block.appendChild(mediaElement);
+          block.appendChild(link);
+          results.appendChild(block);
+        });
+
+        document.getElementById('downloadAllBtn').disabled = mediaUrls.length === 0;
+
+      } catch (e) {
+        console.error(e);
+        results.textContent = 'Failed to fetch. Site may block access.';
+      }
+    }
+
+    async function downloadAll() {
+      if (mediaUrls.length === 0) {
+        alert('No media to download.');
+        return;
+      }
+
+      const zip = new JSZip();
+      const folder = zip.folder("media");
+
+      for (const url of mediaUrls) {
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error('Fetch failed');
+          const blob = await res.blob();
+          let filename = url.split('/').pop().split('?')[0];
+          if (!filename) filename = 'file';
+          folder.file(filename, blob);
+        } catch (e) {
+          console.warn('Failed to fetch:', url);
+        }
+      }
+
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(zipBlob);
+      a.download = 'media.zip';
+      a.click();
+    }
+  </script>
+
+</body>
+</html>
