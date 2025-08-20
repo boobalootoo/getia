@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Largest Image Extractor</title>
+    <!-- Tailwind CSS for a clean, modern look -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <!-- Main application container -->
+    <div class="w-full max-w-2xl bg-white p-8 rounded-2xl shadow-lg flex flex-col items-center gap-6">
+
+        <h1 class="text-3xl font-bold text-gray-800">🖼️ Largest Image Extractor</h1>
+        <p class="text-gray-600 text-center">Enter a URL below and I'll find and display the largest image from the page.</p>
+
+        <!-- URL input and button container -->
+        <div class="w-full flex gap-2">
+            <input type="text" id="urlInput" placeholder="https://example.com"
+                   class="flex-grow p-4 text-xl border-2 border-gray-300 rounded-xl focus:border-blue-500 focus:outline-none transition-all duration-300">
+            <button id="findButton"
+                    class="bg-blue-600 text-white p-4 rounded-xl text-xl font-bold hover:bg-blue-700 transition-colors duration-300">
+                Find Image
+            </button>
+        </div>
+
+        <!-- Display container for results and messages -->
+        <div id="results" class="w-full min-h-[50vh] flex flex-col justify-center items-center bg-gray-50 rounded-xl border-2 border-dashed border-gray-300 transition-all duration-300 p-4 overflow-hidden text-center text-gray-500 text-lg font-medium">
+            The largest image will be displayed here.
+        </div>
+    </div>
+
+    <script>
+        // Get references to the HTML elements
+        const urlInput = document.getElementById('urlInput');
+        const findButton = document.getElementById('findButton');
+        const resultsDiv = document.getElementById('results');
+
+        /**
+         * Clears the results and shows a loading message.
+         */
+        function showLoading() {
+            resultsDiv.innerHTML = `
+                <div class="flex flex-col items-center space-y-2 text-gray-700">
+                    <svg class="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span class="text-xl">Fetching images...</span>
+                </div>
+            `;
+            resultsDiv.classList.add('justify-center');
+            resultsDiv.classList.remove('justify-start');
+        }
+
+        /**
+         * Fetches a page and finds the largest image.
+         */
+        async function fetchAndExtract() {
+            const url = urlInput.value.trim();
+            if (!url) {
+                resultsDiv.textContent = 'Please enter a valid URL.';
+                return;
+            }
+
+            showLoading();
+
+            try {
+                // Use a proxy to bypass potential CORS issues
+                const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);
+                const res = await fetch(proxyUrl);
+                const html = await res.text();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const base = new URL(url);
+
+                const imageEls = [...doc.querySelectorAll('img')];
+                const imageUrls = imageEls.map(el => new URL(el.getAttribute('src'), base).href);
+
+                if (imageUrls.length === 0) {
+                    resultsDiv.textContent = 'No images found on this page.';
+                    return;
+                }
+
+                let largestImageUrl = null;
+                let maxArea = 0;
+
+                // Create a promise for each image to load
+                const imageLoadPromises = imageUrls.map(imageUrl => {
+                    return new Promise((resolve) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const area = img.naturalWidth * img.naturalHeight;
+                            if (area > maxArea) {
+                                maxArea = area;
+                                largestImageUrl = imageUrl;
+                            }
+                            resolve();
+                        };
+                        img.onerror = () => {
+                            // Resolve the promise even if the image fails to load
+                            resolve();
+                        };
+                        img.src = imageUrl;
+                    });
+                });
+
+                // Wait for all images to attempt loading
+                await Promise.all(imageLoadPromises);
+
+                resultsDiv.innerHTML = ''; // Clear the loading message
+                resultsDiv.classList.remove('justify-center');
+                resultsDiv.classList.add('justify-start');
+
+                if (largestImageUrl) {
+                    const imgElement = document.createElement('img');
+                    imgElement.src = largestImageUrl;
+                    imgElement.alt = "Largest image from the page";
+                    imgElement.className = 'rounded-lg max-w-full max-h-full mx-auto shadow-lg';
+                    resultsDiv.appendChild(imgElement);
+                } else {
+                    resultsDiv.textContent = 'Could not determine the largest image. Please check the URL or try again.';
+                }
+
+            } catch (e) {
+                console.error(e);
+                resultsDiv.textContent = 'Failed to fetch the URL. The site may be blocking access or the URL is invalid.';
+            }
+        }
+
+        // Add event listeners to the button and input field
+        findButton.addEventListener('click', fetchAndExtract);
+        urlInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                fetchAndExtract();
+            }
+        });
+
+        // Set initial state
+        resultsDiv.textContent = 'The largest image will be displayed here.';
+    </script>
+</body>
+</html>
